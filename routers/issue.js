@@ -3,7 +3,6 @@ const router = express.Router();
 const { ensureAuth } = require('../middlewares/auth');
 const IssueService = require('../services/issue');
 
-// 새 이슈 생성
 router.post('/', ensureAuth, async (req, res) => {
   try {
     const issue = await IssueService.createIssue(req.user.googleId, req.body);
@@ -13,7 +12,6 @@ router.post('/', ensureAuth, async (req, res) => {
   }
 });
 
-// 반경 내 이슈 조회
 router.get('/nearby', ensureAuth, async (req, res) => {
   try {
     const { latitude, longitude, radius } = req.query;

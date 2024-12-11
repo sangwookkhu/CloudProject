@@ -4,7 +4,6 @@ const dynamodb = new AWS.DynamoDB.DocumentClient();
 const logger = require('../utils/logger');
 
 class IssueService {
-  // 이슈 생성
   static async createIssue(userId, data) {
     try {
       const issue = {
@@ -17,7 +16,7 @@ class IssueService {
         location: `${data.latitude},${data.longitude}`,
         status: 'active',
         createdAt: new Date().toISOString(),
-        type: data.type // 사고유형, 도로파손 등
+        type: data.type
       };
 
       await dynamodb.put({
@@ -25,7 +24,6 @@ class IssueService {
         Item: issue
       }).promise();
 
-      // 근처 사용자들에게 알림 전송
       await this.notifyNearbyUsers(issue);
       return issue;
     } catch (error) {
@@ -34,7 +32,6 @@ class IssueService {
     }
   }
 
-  // 반경 내 이슈 조회
   static async getIssuesInRadius(latitude, longitude, radiusInKm = 5) {
     try {
       const result = await dynamodb.scan({
@@ -45,7 +42,6 @@ class IssueService {
         }
       }).promise();
 
-      // 반경 내 이슈 필터링
       const issues = result.Items.filter(issue => {
         const distance = this.calculateDistance(
           latitude,
@@ -63,15 +59,12 @@ class IssueService {
     }
   }
 
-  // 근처 사용자 알림
   static async notifyNearbyUsers(issue) {
     try {
-      // 활성 사용자 조회
       const users = await dynamodb.scan({
         TableName: 'Users'
       }).promise();
 
-      // 반경 5km 내 사용자 필터링 및 알림 전송
       for (const user of users.Items) {
         if (user.lastLocation) {
           const [userLat, userLng] = user.lastLocation.split(',');
@@ -98,37 +91,8 @@ class IssueService {
     }
   }
 
-  // 알림 전송
-  static async sendNotification(userId, notification) {
-    try {
-      const notificationItem = {
-        id: uuidv4(),
-        userId,
-        ...notification,
-        createdAt: new Date().toISOString(),
-        read: false
-      };
-
-      await dynamodb.put({
-        TableName: 'Notifications',
-        Item: notificationItem
-      }).promise();
-
-      // WebSocket을 통한 실시간 알림 전송
-      global.wss?.clients.forEach(client => {
-        if (client.userId === userId && client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify(notification));
-        }
-      });
-    } catch (error) {
-      logger.error('Error sending notification:', error);
-      throw error;
-    }
-  }
-
-  // 거리 계산 (Haversine formula)
   static calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // 지구 반경 (km)
+    const R = 6371;
     const dLat = this.toRad(lat2 - lat1);
     const dLon = this.toRad(lon2 - lon1);
     const a =

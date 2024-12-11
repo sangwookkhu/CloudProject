@@ -1,5 +1,10 @@
 const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamodb = new AWS.DynamoDB.DocumentClient({
+  region: 'us-east-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  sessionToken: process.env.AWS_SESSION_TOKEN
+});
 const csv = require('csv-parser');
 const fs = require('fs');
 
@@ -29,7 +34,6 @@ class AccidentService {
           })
           .on('end', async () => {
             try {
-              // DynamoDB 배치 쓰기 (25개씩)
               const batchSize = 25;
               for (let i = 0; i < results.length; i += batchSize) {
                 const batch = results.slice(i, i + batchSize);

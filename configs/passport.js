@@ -1,7 +1,13 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+
+const dynamodb = new AWS.DynamoDB.DocumentClient({
+  region: 'us-east-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  sessionToken: process.env.AWS_SESSION_TOKEN
+});
 
 passport.serializeUser((user, done) => {
   done(null, user.googleId);
@@ -32,7 +38,6 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // 기존 사용자 조회
         const params = {
           TableName: 'Users',
           Key: {
@@ -46,7 +51,6 @@ passport.use(
           return done(null, result.Item);
         }
         
-        // 새 사용자 생성
         const newUser = {
           googleId: profile.id,
           email: profile.emails[0].value,
