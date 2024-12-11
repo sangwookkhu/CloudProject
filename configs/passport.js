@@ -1,29 +1,15 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const AWS = require('aws-sdk');
-
-const dynamodb = new AWS.DynamoDB.DocumentClient({
-  region: 'us-east-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  sessionToken: process.env.AWS_SESSION_TOKEN
-});
+const User = require('../schemas/user');
 
 passport.serializeUser((user, done) => {
-  done(null, user.googleId);
+  done(null, user.id);
 });
 
-passport.deserializeUser(async (googleId, done) => {
+passport.deserializeUser(async (id, done) => {
   try {
-    const params = {
-      TableName: 'Users',
-      Key: {
-        googleId: googleId
-      }
-    };
-    
-    const result = await dynamodb.get(params).promise();
-    done(null, result.Item);
+    const user = await User.findById(id);
+    done(null, user);
   } catch (err) {
     done(err, null);
   }
@@ -34,36 +20,23 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: '/auth/google/callback'
+      callbackURL: '/auth/google/callback',
+      scope: ['profile', 'email']
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const params = {
-          TableName: 'Users',
-          Key: {
-            googleId: profile.id
-          }
-        };
+        let user = await User.findOne({ googleId: profile.id });
         
-        const result = await dynamodb.get(params).promise();
-        
-        if (result.Item) {
-          return done(null, result.Item);
+        if (!user) {
+          user = await User.create({
+            googleId: profile.id,
+            email: profile.emails[0].value,
+            name: profile.displayName,
+            profilePicture: profile.photos[0].value
+          });
         }
         
-        const newUser = {
-          googleId: profile.id,
-          email: profile.emails[0].value,
-          name: profile.displayName,
-          profilePicture: profile.photos[0].value
-        };
-        
-        await dynamodb.put({
-          TableName: 'Users',
-          Item: newUser
-        }).promise();
-        
-        return done(null, newUser);
+        return done(null, user);
       } catch (err) {
         return done(err, null);
       }

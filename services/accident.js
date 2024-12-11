@@ -1,12 +1,7 @@
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient({
-  region: 'us-east-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  sessionToken: process.env.AWS_SESSION_TOKEN
-});
 const csv = require('csv-parser');
 const fs = require('fs');
+const Accident = require('../schemas/accident');
+const logger = require('../utils/logger');
 
 class AccidentService {
   static async importCSVData(filePath) {
@@ -34,58 +29,44 @@ class AccidentService {
           })
           .on('end', async () => {
             try {
-              const batchSize = 25;
-              for (let i = 0; i < results.length; i += batchSize) {
-                const batch = results.slice(i, i + batchSize);
-                const params = {
-                  RequestItems: {
-                    'Accidents': batch.map(item => ({
-                      PutRequest: {
-                        Item: item
-                      }
-                    }))
-                  }
-                };
-                await dynamodb.batchWrite(params).promise();
-              }
+              // 기존 데이터 삭제 후 새로운 데이터 입력
+              await Accident.deleteMany({});
+              await Accident.insertMany(results);
+              logger.info(`Successfully imported ${results.length} accidents`);
               resolve(results.length);
             } catch (error) {
               reject(error);
             }
-          });
+          })
+          .on('error', (error) => reject(error));
       });
     } catch (error) {
+      logger.error('Error importing CSV:', error);
       throw error;
     }
   }
 
   static async getRecentAccidents() {
-    const params = {
-      TableName: 'Accidents',
-      IndexName: 'occr_date-index',
-      Limit: 100,
-      ScanIndexForward: false
-    };
-    
-    const result = await dynamodb.scan(params).promise();
-    return result.Items;
+    try {
+      return await Accident.find()
+        .sort({ occr_date: -1, occr_time: -1 })
+        .limit(100);
+    } catch (error) {
+      logger.error('Error fetching recent accidents:', error);
+      throw error;
+    }
   }
 
   static async getAccidentsByArea(minX, maxX, minY, maxY) {
-    const params = {
-      TableName: 'Accidents',
-      FilterExpression: 
-        'grs80tm_x BETWEEN :minX AND :maxX AND grs80tm_y BETWEEN :minY AND :maxY',
-      ExpressionAttributeValues: {
-        ':minX': minX,
-        ':maxX': maxX,
-        ':minY': minY,
-        ':maxY': maxY
-      }
-    };
-    
-    const result = await dynamodb.scan(params).promise();
-    return result.Items;
+    try {
+      return await Accident.find({
+        grs80tm_x: { $gte: minX, $lte: maxX },
+        grs80tm_y: { $gte: minY, $lte: maxY }
+      });
+    } catch (error) {
+      logger.error('Error fetching accidents by area:', error);
+      throw error;
+    }
   }
 }
 

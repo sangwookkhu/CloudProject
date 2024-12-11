@@ -1,40 +1,46 @@
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+// services/auth.js
+const User = require('../schemas/user');
+const logger = require('../utils/logger');
 
 class AuthService {
   static async handleGoogleCallback(req, res) {
     try {
       res.redirect('/dashboard');
     } catch (error) {
-      console.error('Google callback error:', error);
+      logger.error('Google callback error:', error);
       res.redirect('/');
     }
   }
 
+  // services/auth.js
   static async logout(req, res) {
     try {
-      const googleId = req.user?.googleId;
-      
-      if (googleId) {
-        const params = {
-          TableName: 'Users',
-          Key: {
-            googleId: googleId
-          }
-        };
-        
-        await dynamodb.delete(params).promise();
-      }
+      const userId = req.user?._id;
 
+      // 세션 완전히 삭제
       req.session.destroy((err) => {
         if (err) {
-          console.error('Logout error:', err);
+          logger.error('Session destruction error:', err);
           return res.redirect('/dashboard');
         }
-        res.redirect('/');
+
+        // 사용자가 존재하면 데이터베이스에서 삭제
+        if (userId) {
+          User.findByIdAndDelete(userId)
+            .then(() => {
+              logger.info(`User ${userId} successfully deleted`);
+              res.redirect('/');
+            })
+            .catch((error) => {
+              logger.error('Error deleting user:', error);
+              res.redirect('/');
+            });
+        } else {
+          res.redirect('/');
+        }
       });
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
       res.redirect('/');
     }
   }
