@@ -1,12 +1,13 @@
-const AWS = require('aws-sdk');
+const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const Issue = require('../schemas/issue');
+const User = require('../schemas/user');
 const logger = require('../utils/logger');
 
 class IssueService {
   static async createIssue(userId, data) {
     try {
-      const issue = {
+      const issue = new Issue({
         id: uuidv4(),
         userId,
         title: data.title,
@@ -15,15 +16,11 @@ class IssueService {
         longitude: data.longitude,
         location: `${data.latitude},${data.longitude}`,
         status: 'active',
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
         type: data.type
-      };
+      });
 
-      await dynamodb.put({
-        TableName: 'Issues',
-        Item: issue
-      }).promise();
-
+      await issue.save();
       await this.notifyNearbyUsers(issue);
       return issue;
     } catch (error) {
@@ -34,15 +31,9 @@ class IssueService {
 
   static async getIssuesInRadius(latitude, longitude, radiusInKm = 5) {
     try {
-      const result = await dynamodb.scan({
-        TableName: 'Issues',
-        FilterExpression: 'status = :status',
-        ExpressionAttributeValues: {
-          ':status': 'active'
-        }
-      }).promise();
+      const issues = await Issue.find({ status: 'active' });
 
-      const issues = result.Items.filter(issue => {
+      return issues.filter(issue => {
         const distance = this.calculateDistance(
           latitude,
           longitude,
@@ -51,8 +42,6 @@ class IssueService {
         );
         return distance <= radiusInKm;
       });
-
-      return issues;
     } catch (error) {
       logger.error('Error fetching issues:', error);
       throw error;
@@ -61,11 +50,9 @@ class IssueService {
 
   static async notifyNearbyUsers(issue) {
     try {
-      const users = await dynamodb.scan({
-        TableName: 'Users'
-      }).promise();
+      const users = await User.find();
 
-      for (const user of users.Items) {
+      for (const user of users) {
         if (user.lastLocation) {
           const [userLat, userLng] = user.lastLocation.split(',');
           const distance = this.calculateDistance(
@@ -76,12 +63,8 @@ class IssueService {
           );
 
           if (distance <= 5) {
-            await this.sendNotification(user.id, {
-              type: 'NEW_ISSUE',
-              title: '새로운 이슈 발생',
-              message: `${issue.title} - ${issue.description}`,
-              issueId: issue.id
-            });
+            logger.info(`Notify user ${user._id} about issue ${issue.id}`);
+            // Add notification logic here
           }
         }
       }
